@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TERRANEWS LIVE</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #060a12; --surface: #0d1520; --surface2: #111c2c;
+  --border: rgba(100,180,255,0.10); --border2: rgba(100,180,255,0.18);
+  --accent: #00d4ff; --accent2: #ff4d6d; --accent3: #f5a623;
+  --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+  --text: #c8dff5; --text-dim: #4a6a8a; --text-mid: #7a9ec0;
+}
+html, body { height: 100%; }
+body { background:var(--bg); color:var(--text); font-family:'Syne',sans-serif; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+/* ── HEADER ── */
+header { display:flex; align-items:center; padding:9px 20px; border-bottom:1px solid var(--border); background:rgba(6,10,18,0.99); flex-shrink:0; z-index:1000; gap:14px; }
+.logo { font-family:'Bebas Neue',sans-serif; font-size:26px; letter-spacing:4px; color:var(--accent); text-shadow:0 0 20px rgba(0,212,255,0.4); white-space:nowrap; }
+.logo em { color:#fff; font-style:normal; }
+.logo small { font-size:12px; color:var(--accent3); letter-spacing:2px; margin-left:8px; }
+.header-stats { display:flex; gap:16px; font-family:'Space Mono',monospace; font-size:9px; color:var(--text-dim); }
+.stat-item strong { color:var(--accent); display:block; font-size:13px; }
+.header-right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.live-ind { display:flex; align-items:center; gap:7px; font-family:'Space Mono',monospace; font-size:10px; color:var(--accent2); letter-spacing:2px; }
+.pulse { width:7px; height:7px; background:var(--accent2); border-radius:50%; animation:blink 1.5s infinite; flex-shrink:0; }
+@keyframes blink { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(255,77,109,.5)} 50%{opacity:.6;box-shadow:0 0 0 5px rgba(255,77,109,0)} }
+
+/* ── LAYOUT ── */
+.main { display:grid; grid-template-columns:1fr 360px; flex:1; min-height:0; }
+.map-wrap { position:relative; min-height:0; }
+#map { width:100%; height:100%; background:#060e1c; }
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-container { background:#060e1c !important; }
+.leaflet-control-attribution { background:rgba(6,10,18,.85)!important; color:var(--text-dim)!important; font-size:9px!important; }
+.leaflet-control-attribution a { color:var(--text-dim)!important; }
+.leaflet-control-zoom { border:1px solid var(--border)!important; }
+.leaflet-control-zoom a { background:rgba(13,21,32,.95)!important; color:var(--text-dim)!important; border-color:var(--border)!important; font-family:'Space Mono',monospace!important; }
+.leaflet-control-zoom a:hover { background:rgba(0,212,255,.1)!important; color:var(--accent)!important; }
+.leaflet-popup-content-wrapper { background:rgba(6,10,18,.97)!important; color:var(--text)!important; border:1px solid var(--border2)!important; border-radius:3px!important; box-shadow:0 8px 40px rgba(0,0,0,.8)!important; }
+.leaflet-popup-content { margin:0!important; padding:0!important; }
+.leaflet-popup-tip-container { display:none; }
+.leaflet-popup-close-button { color:var(--text-dim)!important; font-size:16px!important; top:10px!important; right:12px!important; z-index:10; }
+.leaflet-popup-close-button:hover { color:var(--accent2)!important; background:none!important; }
+
+/* ── FILTER BAR ── */
+.filter-bar { position:absolute; top:12px; left:12px; z-index:500; display:flex; gap:6px; flex-wrap:wrap; max-width:calc(100% - 24px); }
+.filter-btn { padding:5px 10px; border:1px solid var(--border); background:rgba(6,10,18,.92); color:var(--text-dim); font-family:'Space Mono',monospace; font-size:9px; letter-spacing:1px; cursor:pointer; border-radius:2px; transition:all .2s; backdrop-filter:blur(8px); }
+.filter-btn:hover, .filter-btn.active { border-color:var(--accent); color:var(--accent); background:rgba(0,212,255,.08); }
+.market-btn { border-color:var(--accent3)!important; color:var(--accent3)!important; }
+.market-btn.active { background:rgba(245,166,35,.1)!important; }
+.refresh-btn { padding:5px 10px; border:1px solid var(--accent2); background:rgba(255,77,109,.1); color:var(--accent2); font-family:'Space Mono',monospace; font-size:9px; cursor:pointer; border-radius:2px; transition:all .2s; }
+.refresh-btn:hover { background:rgba(255,77,109,.2); }
+.refresh-btn:disabled { opacity:.3; cursor:not-allowed; }
+
+/* ── STATUS BAR ── */
+.status-bar { position:absolute; bottom:8px; left:12px; z-index:500; font-family:'Space Mono',monospace; font-size:9px; color:var(--text-dim); background:rgba(6,10,18,.78); padding:3px 10px; border-radius:2px; }
+
+/* ── LEGEND (bottom-right on map) ── */
+.legend { position:absolute; bottom:8px; right:12px; z-index:500; background:rgba(6,10,18,.88); border:1px solid var(--border); border-radius:3px; padding:8px 12px; font-family:'Space Mono',monospace; font-size:8px; color:var(--text-dim); line-height:2; backdrop-filter:blur(6px); }
+.legend-row { display:flex; align-items:center; gap:7px; }
+.legend-dot { border-radius:50%; flex-shrink:0; }
+
+/* ── NEWS POPUP ── */
+.news-popup { width:260px; padding:14px 16px; }
+.popup-paper { font-family:'Space Mono',monospace; font-size:9px; color:var(--accent3); letter-spacing:1px; margin-bottom:3px; }
+.popup-city { font-family:'Bebas Neue',sans-serif; font-size:19px; letter-spacing:2px; color:var(--accent); line-height:1; margin-bottom:6px; }
+.popup-cat { display:inline-block; font-family:'Space Mono',monospace; font-size:8px; letter-spacing:1px; padding:2px 6px; border-radius:1px; margin-bottom:8px; }
+.popup-headline { font-size:12px; font-weight:700; line-height:1.4; color:#fff; margin-bottom:8px; }
+.popup-desc { font-size:11px; line-height:1.5; color:var(--text); opacity:.8; margin-bottom:8px; }
+.popup-img { width:100%; height:90px; object-fit:cover; border-radius:2px; margin-bottom:8px; display:block; }
+.popup-footer { font-family:'Space Mono',monospace; font-size:9px; color:var(--text-dim); display:flex; justify-content:space-between; align-items:center; }
+.popup-link { color:var(--accent); text-decoration:none; }
+.popup-link:hover { text-decoration:underline; }
+.popup-loading { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-dim); padding:6px 0; animation:blink 1s infinite; }
+.popup-time { font-size:8px; }
+
+/* ── MARKET POPUP ── */
+.mkt-popup { width:300px; font-family:'Space Mono',monospace; }
+.mkt-header { padding:14px 16px 10px; border-bottom:1px solid var(--border); }
+.mkt-region { font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:2px; color:var(--accent); line-height:1; }
+.mkt-updated { font-size:8px; color:var(--text-dim); margin-top:2px; letter-spacing:1px; }
+.mkt-assets { padding:10px 16px; display:flex; flex-direction:column; gap:8px; }
+.asset-row { display:grid; grid-template-columns:1fr auto auto; gap:6px; align-items:center; }
+.asset-name { font-size:9px; color:var(--text-mid); letter-spacing:1px; }
+.asset-price { font-size:11px; color:var(--text); text-align:right; }
+.asset-pct { font-size:11px; font-weight:700; text-align:right; min-width:52px; }
+.asset-pct.up   { color:var(--green); }
+.asset-pct.down { color:var(--red); }
+.asset-pct.flat { color:var(--text-dim); }
+.asset-extras { grid-column:1/-1; display:flex; gap:10px; font-size:8px; color:var(--text-dim); padding-left:0; margin-top:-3px; }
+.mkt-spark { padding:0 16px 6px; }
+.spark-label { font-size:8px; color:var(--text-dim); letter-spacing:1px; margin-bottom:3px; }
+.mkt-anomaly { padding:8px 16px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+.anomaly-bar-wrap { flex:1; height:5px; background:rgba(255,255,255,.06); border-radius:3px; overflow:hidden; }
+.anomaly-bar { height:100%; border-radius:3px; transition:width .4s; }
+.anomaly-label { font-size:8px; color:var(--text-dim); letter-spacing:1px; white-space:nowrap; }
+.mkt-breaks { padding:8px 16px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:5px; }
+.break-item { display:flex; align-items:flex-start; gap:6px; font-size:9px; line-height:1.4; }
+.break-icon { flex-shrink:0; margin-top:1px; }
+.break-text { color:var(--text); }
+.break-detail { color:var(--text-dim); font-size:8px; display:block; }
+.sev-critical .break-icon { color:#ff4444; }
+.sev-high     .break-icon { color:#f97316; }
+.sev-medium   .break-icon { color:var(--yellow); }
+.sev-low      .break-icon { color:var(--text-dim); }
+.mkt-nodata { padding:14px 16px; font-size:10px; color:var(--text-dim); text-align:center; }
+
+/* ── CAT COLORS ── */
+.cat-general, .cat-world   { background:rgba(180,180,255,.15); color:#b4b4ff; }
+.cat-business              { background:rgba(245,166,35,.15);  color:#f5a623; }
+.cat-technology            { background:rgba(150,100,255,.15); color:#9664ff; }
+.cat-science               { background:rgba(0,212,255,.15);   color:#00d4ff; }
+.cat-health                { background:rgba(50,200,100,.15);  color:#32c864; }
+.cat-sports                { background:rgba(255,77,109,.15);  color:#ff4d6d; }
+.cat-entertainment         { background:rgba(255,180,50,.15);  color:#ffb432; }
+.cat-nation                { background:rgba(255,100,50,.15);  color:#ff6432; }
+
+/* ── SIDEBAR ── */
+.sidebar { border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; background:var(--surface); }
+.sidebar-header { padding:12px 16px; border-bottom:1px solid var(--border); font-family:'Space Mono',monospace; font-size:9px; color:var(--text-dim); letter-spacing:2px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.story-count { background:rgba(0,212,255,.1); color:var(--accent); padding:2px 8px; border-radius:2px; font-size:9px; }
+
+/* ── MARKET SIDEBAR PANEL ── */
+.mkt-panel { border-bottom:1px solid var(--border); background:var(--surface2); flex-shrink:0; overflow:hidden; max-height:0; transition:max-height .3s ease; }
+.mkt-panel.open { max-height:280px; }
+.mkt-panel-inner { padding:10px 14px; overflow-y:auto; max-height:280px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.mkt-panel-title { font-family:'Space Mono',monospace; font-size:8px; color:var(--accent3); letter-spacing:2px; margin-bottom:8px; }
+.mkt-region-row { display:grid; grid-template-columns:1fr 52px 52px 28px; gap:4px; align-items:center; padding:4px 0; border-bottom:1px solid rgba(100,180,255,.05); cursor:pointer; }
+.mkt-region-row:hover { background:rgba(0,212,255,.03); margin:0 -14px; padding:4px 14px; }
+.mrr-name { font-family:'Space Mono',monospace; font-size:9px; color:var(--text-mid); }
+.mrr-eq   { font-family:'Space Mono',monospace; font-size:9px; text-align:right; font-weight:700; }
+.mrr-fx   { font-family:'Space Mono',monospace; font-size:9px; text-align:right; color:var(--text-dim); }
+.mrr-score { text-align:right; }
+.score-pip { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.mrr-eq.up   { color:var(--green); }
+.mrr-eq.down { color:var(--red); }
+.mrr-eq.flat { color:var(--text-dim); }
+
+/* ── NEWS FEED ── */
+.news-feed { overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.news-item { padding:11px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; }
+.news-item:hover { background:rgba(0,212,255,.04); }
+.news-item.active { background:rgba(0,212,255,.06); border-left:2px solid var(--accent); padding-left:14px; }
+.item-meta { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+.cat-tag { font-family:'Space Mono',monospace; font-size:8px; letter-spacing:1px; padding:2px 5px; border-radius:1px; }
+.item-time { font-family:'Space Mono',monospace; font-size:8px; color:var(--text-dim); margin-left:auto; }
+.item-city { font-size:9px; color:var(--accent); font-weight:700; letter-spacing:1px; font-family:'Space Mono',monospace; margin-bottom:3px; }
+.item-headline { font-size:11px; line-height:1.45; color:var(--text); font-weight:600; }
+.item-source { font-family:'Space Mono',monospace; font-size:8px; color:var(--text-dim); margin-top:5px; }
+.skel { border-radius:2px; background:linear-gradient(90deg,rgba(100,180,255,.04) 25%,rgba(100,180,255,.09) 50%,rgba(100,180,255,.04) 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ── TICKER ── */
+.bottom-bar { display:flex; align-items:center; background:rgba(6,10,18,.97); border-top:1px solid var(--border); height:60px; flex-shrink:0; overflow:hidden; z-index:1000; }
+.ticker-label { padding:0 12px; font-family:'Bebas Neue',sans-serif; font-size:13px; letter-spacing:2px; color:var(--bg); background:var(--accent2); height:100%; display:flex; align-items:center; flex-shrink:0; }
+.ticker-track { flex:1; overflow:hidden; }
+.ticker-inner { display:inline-flex; gap:60px; white-space:nowrap; font-family:'Space Mono',monospace; font-size:18px; color:var(--text-dim); animation:scrolltick 720s linear infinite; }
+@keyframes scrolltick { from{transform:translateX(100vw)} to{transform:translateX(-100%)} }
+.ticker-item b { color:var(--text); margin-right:5px; }
+
+/* ── TOAST ── */
+.toast { position:fixed; bottom:38px; left:50%; transform:translateX(-50%); background:rgba(13,21,32,.97); border:1px solid var(--border); color:var(--text-dim); font-family:'Space Mono',monospace; font-size:9px; padding:5px 14px; border-radius:2px; z-index:9999; opacity:0; transition:opacity .2s; pointer-events:none; white-space:nowrap; }
+.toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<header>
+  <div class="logo">TERRA<em>NEWS</em><small>LIVE</small></div>
+  <div class="header-stats">
+    <div class="stat-item"><strong id="hTotal">—</strong>SOURCES</div>
+    <div class="stat-item"><strong id="hLoaded">0</strong>LOADED</div>
+    <div class="stat-item"><strong id="hMarket">—</strong>MARKETS</div>
+  </div>
+  <div class="header-right">
+    <div class="live-ind"><div class="pulse"></div>LIVE</div>
+  </div>
+</header>
+
+<div class="main">
+  <div class="map-wrap">
+    <div class="filter-bar">
+      <button class="filter-btn active" data-cat="all">ALL</button>
+      <button class="filter-btn" data-cat="general">GENERAL</button>
+      <button class="filter-btn" data-cat="business">BUSINESS</button>
+      <button class="filter-btn" data-cat="technology">TECH</button>
+      <button class="filter-btn" data-cat="science">SCIENCE</button>
+      <button class="filter-btn" data-cat="health">HEALTH</button>
+      <button class="filter-btn" data-cat="nation">NATION</button>
+      <button class="filter-btn market-btn" id="marketToggle" onclick="toggleMarketLayer()">&#9670; ANOMALIES</button>
+      <button class="refresh-btn" id="refreshBtn" onclick="refresh()">&#8635; REFRESH</button>
+    </div>
+    <div id="map"></div>
+    <div class="status-bar" id="statusBar">LOADING...</div>
+    <div class="legend" id="legend">
+      <div class="legend-row"><div class="legend-dot" style="width:8px;height:8px;background:#22c55e;box-shadow:0 0 6px #22c55e88"></div>EQUITY UP</div>
+      <div class="legend-row"><div class="legend-dot" style="width:8px;height:8px;background:#ef4444;box-shadow:0 0 6px #ef444488"></div>EQUITY DOWN</div>
+      <div class="legend-row"><div class="legend-dot" style="width:14px;height:14px;background:#ef4444;box-shadow:0 0 10px #ef4444aa"></div>HIGH ANOMALY</div>
+      <div class="legend-row"><div class="legend-dot" style="width:20px;height:20px;background:#ef4444;box-shadow:0 0 18px #ef4444cc;border:2px solid #fff3"></div>CORRELATION BREAK</div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-header">
+      LIVE DISPATCHES <span class="story-count" id="sideCount">—</span>
+    </div>
+
+    <!-- Market anomaly panel (collapsible) -->
+    <div class="mkt-panel" id="mktPanel">
+      <div class="mkt-panel-inner">
+        <div class="mkt-panel-title">&#9670; MARKET ANOMALY SCANNER</div>
+        <div id="mktPanelRows">
+          <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);padding:6px 0">LOADING MARKET DATA...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="news-feed" id="feed"></div>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <div class="ticker-label">LIVE</div>
+  <div class="ticker-track"><div class="ticker-inner" id="ticker">LOADING...</div></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const CAT_COLORS = {
+  general:"#b4b4ff", world:"#b4b4ff", business:"#f5a623",
+  technology:"#9664ff", science:"#00d4ff", health:"#32c864",
+  sports:"#ff4d6d", entertainment:"#ffb432", nation:"#ff6432"
+};
+
+const SEV_ICON = { critical:"⚠", high:"▲", medium:"◆", low:"◇" };
+const SEV_COLOR = { critical:"#ff4444", high:"#f97316", medium:"#eab308", low:"#4a6a8a" };
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let leafMap;
+let newsMarkers   = {};   // source_id → Leaflet marker
+let marketMarkers = {};   // region_id → Leaflet marker
+let stories       = {};   // source_id → article
+let marketData    = {};   // region_id → region data
+let SOURCES       = [];
+let activeFilter  = "all";
+let isFetching    = false;
+let marketLayerOn = false;
+
+// ═══════════════════════════════════════════════════════════════
+// MAP INIT
+// ═══════════════════════════════════════════════════════════════
+function initMap() {
+  leafMap = L.map("map", { zoomControl:true }).setView([20, 10], 2);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution:'&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://openstreetmap.org">OSM</a>',
+    subdomains:"abcd", maxZoom:19
+  }).addTo(leafMap);
+  leafMap.on("mousemove", e => {
+    const {lat, lng} = e.latlng;
+    document.getElementById("statusBar").textContent =
+      `${Math.abs(lat).toFixed(2)}${lat>=0?"N":"S"}  ${Math.abs(lng).toFixed(2)}${lng>=0?"E":"W"}`;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEWS MARKERS
+// ═══════════════════════════════════════════════════════════════
+function newsIcon(cat, pending) {
+  const col  = pending ? "#1a3050" : (CAT_COLORS[cat] || "#b4b4ff");
+  const glow = pending ? "none" : `0 0 7px ${col}, 0 0 15px ${col}55`;
+  const anim = pending ? "animation:blink 1.6s ease-in-out infinite;" : "";
+  const op   = pending ? "opacity:.35;" : "";
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:12px;height:12px;border-radius:50%;background:${col};box-shadow:${glow};border:2px solid rgba(255,255,255,.2);${anim}${op}"></div>`,
+    iconSize:[12,12], iconAnchor:[6,6], popupAnchor:[0,-10]
+  });
+}
+
+function placeNewsMarkers() {
+  SOURCES.forEach(source => {
+    if (newsMarkers[source.id]) return;
+    const m = L.marker([source.lat, source.lon], { icon: newsIcon(null, true), zIndexOffset: 0 });
+    m.bindPopup(() => newsPopupHTML(source), { maxWidth:320, className:"" });
+    m.on("popupopen", () => highlightSidebar(source.id));
+    m.addTo(leafMap);
+    newsMarkers[source.id] = m;
+  });
+}
+
+function updateNewsMarker(source) {
+  const s = stories[source.id];
+  if (!s || !newsMarkers[source.id]) return;
+  const cat = s.category || source.category || "general";
+  newsMarkers[source.id].setIcon(newsIcon(cat, false));
+  if (newsMarkers[source.id].isPopupOpen())
+    newsMarkers[source.id].setPopupContent(newsPopupHTML(source));
+}
+
+function newsPopupHTML(source) {
+  const s = stories[source.id];
+  if (!s) return `<div class="news-popup">
+    <div class="popup-paper">${source.name.toUpperCase()}</div>
+    <div class="popup-city">${source.city}</div>
+    <div class="popup-loading">FETCHING STORY...</div>
+  </div>`;
+  const cat = s.category || source.category || "general";
+  return `<div class="news-popup">
+    <div class="popup-paper">${(s.source_name||source.name).toUpperCase()}</div>
+    <div class="popup-city">${source.city}</div>
+    <span class="popup-cat cat-${cat}">${cat.toUpperCase()}</span>
+    ${s.image ? `<img class="popup-img" src="${s.image}" onerror="this.style.display='none'" alt="">` : ""}
+    <div class="popup-headline">${s.title}</div>
+    ${s.description ? `<div class="popup-desc">${s.description.substring(0,130)}${s.description.length>130?"...":""}</div>` : ""}
+    <div class="popup-footer">
+      <span class="popup-time">${timeAgo(s.publishedAt||s.published_at)}</span>
+      ${s.url ? `<a class="popup-link" href="${s.url}" target="_blank" rel="noopener">READ &rarr;</a>` : ""}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MARKET ANOMALY MARKERS
+// ═══════════════════════════════════════════════════════════════
+function anomalyMarkerIcon(region) {
+  const score   = region.anomaly_score || 0;
+  const pct     = region.eq_pct;
+  const hasBreak = region.has_break;
+  const sev      = region.break_severity;
+
+  // Base size: 10px + up to 18px extra scaled by score
+  const size  = Math.round(10 + (score / 10) * 18);
+  const half  = Math.round(size / 2);
+
+  // Color by direction
+  let col;
+  if (pct === null || pct === undefined) col = "#4a6a8a";
+  else if (pct > 0)  col = `hsl(${Math.min(142, 120 + pct * 3)}, 70%, ${40 + Math.min(20, score * 2)}%)`;
+  else               col = `hsl(${Math.max(0, 4 - pct * 2)}, 70%, ${40 + Math.min(20, score * 2)}%)`;
+
+  // Glow: stronger for higher anomaly
+  const glowRadius = Math.round(size * 0.6 + score * 1.5);
+  const glowAlpha  = Math.min(0.8, 0.2 + score * 0.06);
+  const glow = score > 0.5
+    ? `0 0 ${glowRadius}px rgba(${col.startsWith('#') ? hexToRgb(col) : '100,180,255'},${glowAlpha})`
+    : "none";
+
+  // Break ring: white/orange pulsing border
+  const ring = hasBreak
+    ? `border:2px solid ${SEV_COLOR[sev]||'#fff'};animation:breakPulse 1.4s ease-in-out infinite;`
+    : `border:1px solid rgba(255,255,255,.15);`;
+
+  // Score label for high anomalies
+  const label = score >= 3
+    ? `<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:8px;color:${col};white-space:nowrap;text-shadow:0 0 4px rgba(0,0,0,.8)">${pct !== null ? (pct > 0 ? "+" : "") + pct.toFixed(1) + "%" : ""}</div>`
+    : "";
+
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative;width:${size}px;height:${size}px;">
+      ${label}
+      <div style="width:${size}px;height:${size}px;border-radius:50%;background:${col};box-shadow:${glow};${ring}opacity:0.85"></div>
+    </div>`,
+    iconSize: [size, size],
+    iconAnchor: [half, half],
+    popupAnchor: [0, -half - 4]
+  });
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+// Add keyframe for break ring pulsing via a style tag
+const styleEl = document.createElement("style");
+styleEl.textContent = `@keyframes breakPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`;
+document.head.appendChild(styleEl);
+
+function placeMarketMarker(region) {
+  if (!region.eq_ok) return;
+  if (marketMarkers[region.id]) {
+    leafMap.removeLayer(marketMarkers[region.id]);
+    delete marketMarkers[region.id];
+  }
+  const m = L.marker([region.lat, region.lon], {
+    icon: anomalyMarkerIcon(region),
+    zIndexOffset: 1000
+  });
+  m.bindPopup(() => marketPopupHTML(region.id), { maxWidth:340, className:"" });
+  if (marketLayerOn) m.addTo(leafMap);
+  marketMarkers[region.id] = m;
+}
+
+function marketPopupHTML(regionId) {
+  const r = marketData[regionId];
+  if (!r) return `<div class="mkt-popup"><div class="mkt-nodata">LOADING MARKET DATA...</div></div>`;
+
+  // Detailed data comes from /api/market/<id> — fetch async
+  fetchRegionDetail(regionId).then(detail => {
+    if (detail && marketMarkers[regionId]?.isPopupOpen()) {
+      marketMarkers[regionId].setPopupContent(buildDetailPopup(detail));
+    }
+  });
+
+  // Immediate render from summary
+  return buildSummaryPopup(r);
+}
+
+function buildSummaryPopup(r) {
+  const eq    = r;
+  const pct   = r.eq_pct;
+  const pctCls = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+  const pctStr = pct !== null && pct !== undefined ? `${pct>0?"+":""}${pct.toFixed(2)}%` : "—";
+
+  let breaksHtml = "";
+  if (r.has_break && r.corr_breaks?.length) {
+    breaksHtml = `<div class="mkt-breaks">` +
+      r.corr_breaks.map(b => `
+        <div class="break-item sev-${b.severity}">
+          <span class="break-icon">${SEV_ICON[b.severity]||"◆"}</span>
+          <span class="break-text">${b.label}<span class="break-detail">${b.detail}</span></span>
+        </div>`).join("") +
+      `</div>`;
+  }
+
+  const score = r.anomaly_score || 0;
+  const barColor = score >= 6 ? "#ef4444" : score >= 3 ? "#eab308" : "#22c55e";
+
+  return `<div class="mkt-popup">
+    <div class="mkt-header">
+      <div class="mkt-region">${r.label.toUpperCase()}</div>
+      <div class="mkt-updated">UPDATED ${timeAgo(r.updated)}</div>
+    </div>
+    <div class="mkt-assets">
+      <div class="asset-row">
+        <span class="asset-name">${r.eq_name||"EQUITY"}</span>
+        <span class="asset-price">${r.eq_close ? r.eq_close.toFixed(0) : "—"}</span>
+        <span class="asset-pct ${pctCls}">${pctStr}</span>
+      </div>
+      ${r.eq_atr_mul ? `<div class="asset-row"><div class="asset-extras"><span>ATR×${r.eq_atr_mul}</span>${r.eq_vol_rat ? `<span>VOL×${r.eq_vol_rat}</span>` : ""}</div></div>` : ""}
+      ${r.fx_ok ? `<div class="asset-row">
+        <span class="asset-name">${r.fx_name||"FX"}</span>
+        <span class="asset-price"></span>
+        <span class="asset-pct ${r.fx_pct>0?"up":r.fx_pct<0?"down":"flat"}">${r.fx_pct!==null&&r.fx_pct!==undefined?(r.fx_pct>0?"+":"")+r.fx_pct.toFixed(2)+"%":"—"}</span>
+      </div>` : ""}
+    </div>
+    <div class="mkt-anomaly">
+      <span class="anomaly-label">ANOMALY</span>
+      <div class="anomaly-bar-wrap"><div class="anomaly-bar" style="width:${score*10}%;background:${barColor}"></div></div>
+      <span class="anomaly-label">${score.toFixed(1)}/10</span>
+    </div>
+    ${breaksHtml}
+    <div style="padding:6px 16px;font-family:'Space Mono',monospace;font-size:8px;color:var(--text-dim)">CLICK FOR SPARKLINES &rarr;</div>
+  </div>`;
+}
+
+async function fetchRegionDetail(regionId) {
+  try {
+    const resp = await fetch(`/api/market/${regionId}`);
+    return await resp.json();
+  } catch { return null; }
+}
+
+function buildDetailPopup(r) {
+  const eq  = r.equity  || {};
+  const fx  = r.fx      || {};
+  const bond = r.bond   || {};
+
+  function assetRow(data, label) {
+    if (!data?.ok) return "";
+    const pct = data.pct_change;
+    const cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+    const pctStr = pct !== null && pct !== undefined ? `${pct>0?"+":""}${pct.toFixed(2)}%` : "—";
+    const spark = sparklineSVG(data.sparkline || []);
+    return `
+      <div class="asset-row">
+        <span class="asset-name">${label}</span>
+        <span class="asset-price">${data.close ? data.close.toFixed(data.close < 10 ? 4 : 2) : "—"}</span>
+        <span class="asset-pct ${cls}">${pctStr}</span>
+      </div>
+      ${data.atr_multiple || data.vol_ratio ? `<div class="asset-row"><div class="asset-extras">
+        ${data.atr_multiple ? `<span>ATR×${data.atr_multiple}</span>` : ""}
+        ${data.vol_ratio    ? `<span>VOL×${data.vol_ratio}</span>` : ""}
+      </div></div>` : ""}
+      ${spark ? `<div class="mkt-spark"><div class="spark-label">5D CLOSE</div>${spark}</div>` : ""}`;
+  }
+
+  let breaksHtml = "";
+  if (r.has_break && r.corr_breaks?.length) {
+    breaksHtml = `<div class="mkt-breaks">` +
+      r.corr_breaks.map(b => `
+        <div class="break-item sev-${b.severity}">
+          <span class="break-icon">${SEV_ICON[b.severity]||"◆"}</span>
+          <span class="break-text">${b.label}<span class="break-detail">${b.detail}</span></span>
+        </div>`).join("") +
+      `</div>`;
+  }
+
+  const score    = r.anomaly_score || 0;
+  const barColor = score >= 6 ? "#ef4444" : score >= 3 ? "#eab308" : "#22c55e";
+
+  return `<div class="mkt-popup">
+    <div class="mkt-header">
+      <div class="mkt-region">${r.label.toUpperCase()}</div>
+      <div class="mkt-updated">UPDATED ${timeAgo(r.updated)}</div>
+    </div>
+    <div class="mkt-assets">
+      ${assetRow(eq,   eq.name   || "EQUITY")}
+      ${assetRow(fx,   fx.name   || "FX")}
+      ${assetRow(bond, bond.name || "BONDS")}
+    </div>
+    <div class="mkt-anomaly">
+      <span class="anomaly-label">ANOMALY</span>
+      <div class="anomaly-bar-wrap"><div class="anomaly-bar" style="width:${score*10}%;background:${barColor}"></div></div>
+      <span class="anomaly-label">${score.toFixed(1)}/10</span>
+    </div>
+    ${breaksHtml}
+  </div>`;
+}
+
+function sparklineSVG(vals, w=260, h=32) {
+  if (!vals || vals.length < 2) return "";
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = max - min || 1;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const last = vals[vals.length-1];
+  const col  = last >= vals[0] ? "#22c55e" : "#ef4444";
+  return `<svg width="${w}" height="${h}" style="display:block"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MARKET LAYER TOGGLE
+// ═══════════════════════════════════════════════════════════════
+function toggleMarketLayer() {
+  marketLayerOn = !marketLayerOn;
+  const btn   = document.getElementById("marketToggle");
+  const panel = document.getElementById("mktPanel");
+
+  if (marketLayerOn) {
+    btn.classList.add("active");
+    panel.classList.add("open");
+    Object.values(marketMarkers).forEach(m => { if (!leafMap.hasLayer(m)) m.addTo(leafMap); });
+  } else {
+    btn.classList.remove("active");
+    panel.classList.remove("open");
+    Object.values(marketMarkers).forEach(m => { if (leafMap.hasLayer(m)) leafMap.removeLayer(m); });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MARKET SIDEBAR PANEL
+// ═══════════════════════════════════════════════════════════════
+function updateMarketPanel() {
+  const rows = Object.values(marketData)
+    .filter(r => r.eq_ok)
+    .sort((a, b) => (b.anomaly_score || 0) - (a.anomaly_score || 0));
+
+  const container = document.getElementById("mktPanelRows");
+  if (!rows.length) { container.innerHTML = `<div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);padding:6px 0">NO MARKET DATA YET</div>`; return; }
+
+  container.innerHTML = rows.map(r => {
+    const pct    = r.eq_pct;
+    const pctCls = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+    const pctStr = pct !== null && pct !== undefined ? `${pct>0?"+":""}${pct.toFixed(2)}%` : "—";
+    const fxStr  = r.fx_pct !== null && r.fx_pct !== undefined ? `${r.fx_pct>0?"+":""}${r.fx_pct.toFixed(2)}%` : "";
+    const score  = r.anomaly_score || 0;
+    const sc     = score >= 6 ? "#ef4444" : score >= 3 ? "#eab308" : "#22c55e";
+    const breakTag = r.has_break ? `<span style="color:${SEV_COLOR[r.break_severity]||'#fff'};margin-left:2px">${SEV_ICON[r.break_severity]||""}</span>` : "";
+    return `<div class="mkt-region-row" onclick="focusRegion('${r.id}')">
+      <span class="mrr-name">${r.label.toUpperCase()}${breakTag}</span>
+      <span class="mrr-eq ${pctCls}">${pctStr}</span>
+      <span class="mrr-fx">${fxStr}</span>
+      <span class="mrr-score"><span class="score-pip" style="background:${sc};box-shadow:0 0 4px ${sc}88"></span></span>
+    </div>`;
+  }).join("");
+
+  document.getElementById("hMarket").textContent = rows.filter(r => r.anomaly_score >= 1).length + " ACTIVE";
+}
+
+function focusRegion(regionId) {
+  const r = marketData[regionId];
+  if (!r) return;
+  leafMap.setView([r.lat, r.lon], 5, { animate: true });
+  if (!marketLayerOn) toggleMarketLayer();
+  setTimeout(() => marketMarkers[regionId]?.openPopup(), 400);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════════════════════
+function initSidebar() {
+  const feed = document.getElementById("feed");
+  feed.innerHTML = "";
+  SOURCES.forEach(s => {
+    const el = document.createElement("div");
+    el.className = "news-item"; el.id = "si-" + s.id;
+    el.innerHTML = `
+      <div class="item-meta"><div class="skel" style="width:60px;height:12px"></div></div>
+      <div class="item-city">${s.city}</div>
+      <div class="skel" style="width:88%;height:11px;margin:3px 0"></div>
+      <div class="skel" style="width:60%;height:11px"></div>
+      <div class="item-source">${s.name.toUpperCase()}</div>`;
+    feed.appendChild(el);
+  });
+  document.getElementById("sideCount").textContent = "LOADING...";
+}
+
+function updateSidebarItem(source) {
+  const s  = stories[source.id];
+  const el = document.getElementById("si-" + source.id);
+  if (!el || !s) return;
+  const cat = s.category || source.category || "general";
+  el.className = "news-item";
+  el.dataset.cat = cat;
+  el.innerHTML = `
+    <div class="item-meta">
+      <span class="cat-tag cat-${cat}">${cat.toUpperCase()}</span>
+      <span class="item-time">${timeAgo(s.publishedAt||s.published_at)}</span>
+    </div>
+    <div class="item-city">${source.city}</div>
+    <div class="item-headline">${s.title}</div>
+    <div class="item-source">${(s.source_name||source.name).toUpperCase()}</div>`;
+  el.onclick = () => {
+    highlightSidebar(source.id);
+    leafMap.setView([source.lat, source.lon], 5, { animate:true });
+    setTimeout(() => newsMarkers[source.id]?.openPopup(), 400);
+  };
+  sortSidebar();
+  applyFilter();
+}
+
+function sortSidebar() {
+  const feed  = document.getElementById("feed");
+  const items = Array.from(feed.querySelectorAll(".news-item"));
+  items.sort((a, b) => {
+    const sa = stories[a.id.replace("si-","")];
+    const sb = stories[b.id.replace("si-","")];
+    const ta = sa ? new Date(sa.fetched_at || sa.publishedAt || 0).getTime() : 0;
+    const tb = sb ? new Date(sb.fetched_at || sb.publishedAt || 0).getTime() : 0;
+    return tb - ta;
+  });
+  items.forEach(el => feed.appendChild(el));
+}
+
+function highlightSidebar(id) {
+  document.querySelectorAll(".news-item").forEach(el => el.classList.remove("active"));
+  const el = document.getElementById("si-" + id);
+  if (el) { el.classList.add("active"); el.scrollIntoView({ behavior:"smooth", block:"nearest" }); }
+}
+
+function applyFilter() {
+  let vis = 0;
+  SOURCES.forEach(s => {
+    const el    = document.getElementById("si-" + s.id);
+    const story = stories[s.id];
+    const cat   = story ? (story.category || s.category || "general") : s.category;
+    const show  = activeFilter === "all" || cat === activeFilter;
+    if (el) el.style.display = show ? "" : "none";
+    const m = newsMarkers[s.id];
+    if (m) {
+      if (show) { if (!leafMap.hasLayer(m)) m.addTo(leafMap); }
+      else      { if (leafMap.hasLayer(m)) leafMap.removeLayer(m); }
+    }
+    if (show && story) vis++;
+  });
+  document.getElementById("sideCount").textContent = vis + " STORIES";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TICKER
+// ═══════════════════════════════════════════════════════════════
+function updateTicker() {
+  const loaded = SOURCES.filter(s => stories[s.id]);
+  if (!loaded.length) return;
+  const items = loaded.map(s =>
+    `<span class="ticker-item"><b>${s.city}</b>${stories[s.id].title}</span>`
+  ).join('<span style="color:var(--accent);margin:0 10px">&#9670;</span>');
+  document.getElementById("ticker").innerHTML = items + "&nbsp;&nbsp;&nbsp;&nbsp;" + items;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TIME HELPER
+// ═══════════════════════════════════════════════════════════════
+function timeAgo(isoStr) {
+  if (!isoStr) return "LIVE";
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return "JUST NOW";
+  if (m < 60) return m + "m AGO";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h AGO";
+  return Math.floor(h/24) + "d AGO";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DATA FETCHING
+// ═══════════════════════════════════════════════════════════════
+async function loadSources() {
+  const resp = await fetch("/api/sources");
+  SOURCES    = await resp.json();
+  document.getElementById("hTotal").textContent = SOURCES.length;
+  placeNewsMarkers();
+  initSidebar();
+}
+
+async function fetchAllNews() {
+  if (isFetching) return;
+  isFetching = true;
+  document.getElementById("refreshBtn").disabled = true;
+  document.getElementById("statusBar").textContent = "LOADING FROM DATABASE...";
+  try {
+    const resp = await fetch("/api/all");
+    const data = await resp.json();
+    SOURCES.forEach(source => {
+      const story = data[source.id];
+      if (story) {
+        stories[source.id] = story;
+        updateNewsMarker(source);
+        updateSidebarItem(source);
+      }
+    });
+    document.getElementById("hLoaded").textContent = Object.keys(stories).length;
+    updateTicker();
+    const loaded = Object.keys(stories).length;
+    document.getElementById("statusBar").textContent =
+      `LIVE — ${loaded}/${SOURCES.length} SOURCES | auto-refresh every 15min`;
+  } catch(err) {
+    console.error("fetchAllNews failed:", err);
+    document.getElementById("statusBar").textContent = "ERROR LOADING DATA";
+  }
+  document.getElementById("refreshBtn").disabled = false;
+  isFetching = false;
+  setTimeout(fetchAllNews, 15 * 60 * 1000);
+}
+
+async function fetchMarketData() {
+  try {
+    const resp = await fetch("/api/market");
+    const data = await resp.json();
+    if (!data || typeof data !== "object") return;
+    marketData = data;
+
+    // Place / update anomaly markers
+    Object.values(data).forEach(region => {
+      if (region.eq_ok) placeMarketMarker(region);
+    });
+
+    updateMarketPanel();
+
+  } catch(err) {
+    console.warn("Market fetch failed:", err);
+  }
+  setTimeout(fetchMarketData, 5 * 60 * 1000);
+}
+
+function refresh() {
+  if (isFetching) return;
+  stories = {};
+  Object.values(newsMarkers).forEach(m => {
+    m.setIcon(newsIcon(null, true));
+    if (m.isPopupOpen()) m.closePopup();
+  });
+  initSidebar();
+  document.getElementById("ticker").textContent = "REFRESHING...";
+  document.getElementById("hLoaded").textContent = "0";
+  fetchAllNews();
+}
+
+function setupFilters() {
+  document.querySelectorAll(".filter-btn[data-cat]").forEach(btn => {
+    btn.onclick = () => {
+      activeFilter = btn.dataset.cat;
+      document.querySelectorAll(".filter-btn[data-cat]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      applyFilter();
+    };
+  });
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 4000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener("load", async () => {
+  setupFilters();
+  initMap();
+  await loadSources();
+  fetchAllNews();      // async, no await — load news in parallel
+  fetchMarketData();   // async, no await — market data loads independently
+});
+</script>
+</body>
+</html>
